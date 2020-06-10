@@ -1,5 +1,5 @@
 import re
-from datetime import datetime
+import datetime
 import pandas as pd
 import numpy as np
 
@@ -33,7 +33,7 @@ def parse_log_record(rec):
 			line = next(lineit)
 		return line
 
-	def parse_current_line(value_present, val_names, line_parser):
+	def parse_current_line(value_present, data_name_dflt, line_parser):
 		"""
 			Wrapper for line_parser that handles default values (if current line
 			doesn't satisfy condition value_preset or if exception is raised while
@@ -42,8 +42,9 @@ def parse_log_record(rec):
 		"""
 		nonlocal data
 		nonlocal line
-		# initialize dictionary of data in line with NaNs
-		line_data = {k:np.NaN for k in val_names}
+		# initialize dictionary of data in line with
+		# default values
+		line_data = {name : default for name, default in data_name_dflt}
 		if value_present(line):
 			try:
 				# try to use line parser to get dict
@@ -61,34 +62,42 @@ def parse_log_record(rec):
 		return None
 	
 	# parse date/time data, ex: 'Wed Mar 14 14:31:50 2012'
-	val_names = ['datetime']
-	parse_current_line( \
-		lambda s: True, # condition for parsed values \
-		val_names, # names of parsed values\
-		lambda l: { # line parser\
-			val_names[0] : np.datetime64( datetime.strptime(l, '%a %b %d %H:%M:%S %Y'))\
-					} \
+	data_name_default = [('datetime', np.datetime64('NaT'))]
+	parse_current_line(
+		lambda s: True, # condition for parsed values
+		data_name_default, # names of parsed values
+		lambda l: { # line parser
+			data_name_default[0][0] : np.datetime64( datetime.datetime.strptime(l, '%a %b %d %H:%M:%S %Y'))\
+					}
 	)
 
 	# parse GPS data from GPGGA format
 	# ex: '$GPGGA 063059 5147.8142 N 10423.3275 E 1 09 0.9 447.3 M -37.2 M  *64'
-	val_names = ['N, lat', 'E, lon', 'H, m']
+	data_name_default = [('N, lat', np.NaN),
+				  ('E, lon', np.NaN),
+				  ('H, m', np.NaN),
+				  ('GPS time', np.timedelta64('NaT', 's'))]
 	def GPGGA_line_parser(line):
-		GPGGA = line.split()
 		ld = {}
-		ld[ val_names[0] ] = float(GPGGA[2])
-		ld[ val_names[1] ] = float(GPGGA[4])
-		ld[ val_names[2] ] = float(GPGGA[9])
+		GPGGA = line.split()
+		ld[data_name_default[0][0]] = float(GPGGA[2])
+		ld[data_name_default[1][0]] = float(GPGGA[4])
+		ld[data_name_default[2][0]] = float(GPGGA[9])
+		t = GPGGA[1]
+		# convert to seconds since day start and store in np datetime
+		t = 3600*int(t[:2]) + 60*int(t[2:4]) + int(t[4:])
+		ld[data_name_default[3][0]] = np.timedelta64(t, 's')
 		return ld
-	parse_current_line( \
-		lambda l: l.find('$GPGGA') != -1, \
-		val_names, \
-		GPGGA_line_parser \
+	
+	parse_current_line(
+		lambda l: l.find('$GPGGA') != -1,
+		data_name_default,
+		GPGGA_line_parser
 	)
 
 	# parse pressure and temperature data
 	# ex: '0 Bar:  T[ 30983 ] = 30.2 C  P[ 29401 ] = 93.64 kPa (9545.1 mm w)'
-	def pressure_line_parser(l):
+	def press_temp_line_parser(l):
 		# conversion constant
 		mmwater_per_hpa = 0.10197162129779 * 100
 		# match string in parentesis with mm w units
@@ -98,20 +107,22 @@ def parse_log_record(rec):
 		p = float(''.join(re.findall(r'[\d.]', mmwater_str[0])))/mmwater_per_hpa
 		# temperature is between '=' and 'C'
 		T = float(re.findall(r'= .* C', l)[0].strip('=C '))
-		return {val_names[0] : p, val_names[1] : T}
+		return {data_name_default[0][0] : p, data_name_default[1][0] : T}
 	
-	val_names = ['P0, hPa', 'T0, C']
-	parse_current_line( \
-		lambda l: l.find('0 Bar:') != -1, \
-		val_names, \
-		pressure_line_parser \
+	data_name_default = [('P0, hPa', np.NaN),
+				  ('T0, C', np.NaN)]
+	parse_current_line(
+		lambda l: l.find('0 Bar:') != -1,
+		data_name_default,
+		press_temp_line_parser
 	)
 
-	val_names = ['P1, hPa', 'T1, C']
-	parse_current_line( \
-		lambda l: l.find('1 Bar:') != -1, \
-		val_names, \
-		pressure_line_parser \
+	data_name_default = [('P1, hPa', np.NaN),
+				  ('T1, C', np.NaN)]
+	parse_current_line(
+		lambda l: l.find('1 Bar:') != -1,
+		data_name_default,
+		press_temp_line_parser
 	)
 	
 	# skip everything else
@@ -152,19 +163,19 @@ def read_log_to_dataframe(filename, record_break_line = '-'*5):
 
 		# preallocate numpy.ndarray based on first row
 		data = dict.fromkeys(row_data.keys())
-		for k in data.keys():
+		for key in data.keys():
 			try: # if data is already in numpy data type
-				dtype = np.dtype(row_data[k])
+				dtype = np.dtype(row_data[key])
 			except TypeError:
-				# cast from python type to numpy dtype
-				dtype = np.dtype(type(row_data[k]))
-			data[k] = np.ndarray(shape = (n_rec), dtype = dtype)
-			data[k][0] = row_data[k]
+				# else cast from python type to numpy dtype
+				dtype = np.dtype(type(row_data[key]))
+			data[key] = np.ndarray(shape = (n_rec), dtype = dtype)
+			data[key][0] = row_data[key]
 
 		# 'head' output
-		print('extracting data:')
-		for k in data.keys():
-			print(f'\t{k} (e.g. {data[k][0]})')
+		#print('extracting data:')
+		#for key in data.keys():
+		#	print(f'\t{key} (e.g. {data[key][0]})')
 
 		# pre-init the loop
 		i_rec = 1
