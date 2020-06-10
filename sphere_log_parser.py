@@ -128,21 +128,24 @@ def line_count(fnm):
 	return i + 1
 
 
-def read_log_to_dataframe(fnm):
+def read_log_to_dataframe(filename, record_break_line = '-'*5):
 	"""
-		Parse all records from log file and return as pandas DataFrame
+		Parse all records from log file specified with 'filename'
+		and return as pandas.DataFrame
+
+		Optional: custom record break line (checked for inclusion in line)
 	"""
 	# count log records to preallocate memory
-	print(f'parsing {fnm} for telemetry data')
+	print(f'parsing {filename} for telemetry data')
 	print(f'scanning for line count...')
-	n_rec = int((line_count(fnm)-1) / 15) + 3
+	n_rec = int((line_count(filename)-1) / 15) + 3
 	print(f'~{n_rec} records found in log file')
 
 	# scan file record-by-record and parse to dict,
 	# then create series from dict and add as a row
 	# to final DataFrame
-	with open(fnm, 'r', buffering=2**24) as f:
-		rec = extract_log_record(f)
+	with open(filename, 'r', buffering=2**24) as f:
+		rec = extract_log_record(f, record_break_line)
 		row_data = parse_log_record(rec)
 
 		# preallocate numpy.ndarray based on first row
@@ -163,7 +166,7 @@ def read_log_to_dataframe(fnm):
 
 		# pre-init the loop
 		i_rec = 1
-		rec = extract_log_record(f)
+		rec = extract_log_record(f, record_break_line)
 		while rec and i_rec < n_rec:
 			# parse current record to row
 			row_data = parse_log_record(rec)
@@ -174,8 +177,10 @@ def read_log_to_dataframe(fnm):
 				data[key][i_rec] = row_data[key]
 			i_rec += 1
 			# at last, prepare next record iterator
-			rec = extract_log_record(f)
-	
+			rec = extract_log_record(f, record_break_line)
+		
+	print('done!')
+
 	# cut unused rows from each array
 	for key in data.keys():
 		data[key] = data[key][:i_rec]
