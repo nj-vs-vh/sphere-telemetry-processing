@@ -1,15 +1,15 @@
 import re
-import datetime
+from datetime import datetime
 import pandas as pd
 import numpy as np
 
 import time
 
 
-_TEST_LOG_FILENAME = '.\\log_ice\\log.txt'
+_TEST_LOG_FILENAME = '.\\data\\log_ice\\log.txt'
 
 
-def extract_log_record(f, record_break_line = '-'*23):
+def extract_log_record(f, record_break_line = '-'*5):
 	"""
 		Yield lines from log record until record break
 		is met
@@ -17,7 +17,7 @@ def extract_log_record(f, record_break_line = '-'*23):
 	rec = []
 	for line in f:
 		# check for eof
-		if not line or (line[:-1] == record_break_line):
+		if not line or (line.find(record_break_line) != -1):
 			return iter(rec)
 		rec.append(line[:-1]) # strip newline characters
 
@@ -33,72 +33,85 @@ def parse_log_record(rec):
 			line = next(lineit)
 		return line
 
-	data  = {}
+	def parse_current_line(value_present, val_names, line_parser):
+		"""
+			Wrapper for line_parser that handles default values (if current line
+			doesn't satisfy condition value_preset or if exception is raised while
+			parsing), switches to the next line only if needed, and merges data
+			from line to resulting dictionary
+		"""
+		nonlocal data
+		nonlocal line
+		# initialize dictionary of data in line with NaNs
+		line_data = {k:np.NaN for k in val_names}
+		if value_present(line):
+			try:
+				# try to use line parser to get dict
+				# with actual data
+				line_data = line_parser(line)
+			except: pass
+			# if data is present switch to the next line
+			line = get_next_nonempty_line(rec)
+		# merge line data to final dict
+		data = {**data, **line_data}
+
+	data  = {} # initialize parsing result dictionary
 	line = get_next_nonempty_line(rec)
-	if line is None:
+	if line is None: # check for empty record
 		return None
 	
 	# parse date/time data, ex: 'Wed Mar 14 14:31:50 2012'
-	data['datetime'] = np.datetime64( \
-		datetime.datetime.strptime(line, \
-			'%a %b %d %H:%M:%S %Y')
+	val_names = ['datetime']
+	parse_current_line( \
+		lambda s: True, # condition for parsed values \
+		val_names, # names of parsed values\
+		lambda l: { # line parser\
+			val_names[0] : np.datetime64( datetime.strptime(l, '%a %b %d %H:%M:%S %Y'))\
+					} \
 	)
 
-	line = get_next_nonempty_line(rec)
-	if line.find('$GPGGA') != -1:
-		# if GPS data is present
-		# parse it from GPGGA format
-		# ex: '$GPGGA 063059 5147.8142 N 10423.3275 E 1 09 0.9 447.3 M -37.2 M  *64'
+	# parse GPS data from GPGGA format
+	# ex: '$GPGGA 063059 5147.8142 N 10423.3275 E 1 09 0.9 447.3 M -37.2 M  *64'
+	val_names = ['N, lat', 'E, lon', 'H, m']
+	def GPGGA_line_parser(line):
 		GPGGA = line.split()
-		data['N, lat'] = float(GPGGA[2])
-		data['E, lon'] = float(GPGGA[4])
-		data['H, m'] = float(GPGGA[9])
-		line = get_next_nonempty_line(rec)
-	else:
-		# placeholder values
-		data['N, lat'] = np.NaN
-		data['E, lon'] = np.NaN
-		data['H, m'] = np.NaN
-	
+		ld = {}
+		ld[ val_names[0] ] = float(GPGGA[2])
+		ld[ val_names[1] ] = float(GPGGA[4])
+		ld[ val_names[2] ] = float(GPGGA[9])
+		return ld
+	parse_current_line( \
+		lambda l: l.find('$GPGGA') != -1, \
+		val_names, \
+		GPGGA_line_parser \
+	)
+
 	# parse pressure data
 	# ex: '0 Bar:  T[ 30983 ] = 30.2 C  P[ 29401 ] = 93.64 kPa (9545.1 mm w)'
-	mmwater_per_hpa = 0.10197162129779 * 100
-	for i in range(2): # read two pressures at once
-		mmwater_str = re.findall(r'\(.* mm w\)', line) # match string in parentesis with mm w units
-		if mmwater_str:
-			try:
-				# find all digits and decimal point, then glue them
-				# and convert to float
-				p = float(''.join(re.findall(r'[\d.]', mmwater_str[0])))
-				# units conversion
-				p = p/mmwater_per_hpa
-			except:
-				p = np.NaN
-		else:
-			p = np.NaN
-		data[f'P{i}, hPa'] = p # units conversion
-		line = get_next_nonempty_line(rec)
+	def pressure_line_parser(l):
+		# conversion constant
+		mmwater_per_hpa = 0.10197162129779 * 100
+		# match string in parentesis with mm w units
+		mmwater_str = re.findall(r'\(.* mm w\)', l)
+		# find all digits and decimal point, then glue them,
+		# convert to float, convert to hPa
+		p = float(''.join(re.findall(r'[\d.]', mmwater_str[0])))/mmwater_per_hpa
+		return {val_names[0] : p}
+	
+	val_names = ['P0, hPa']
+	parse_current_line( \
+		lambda l: l.find('0 Bar:') != -1, \
+		val_names, \
+		pressure_line_parser \
+	)
 
-	# parse pressure difference
-	# ex: 'Pressure diff -2.23 kPa'
-	if line.find('Pressure diff') != -1:
-		pdiff = float(''.join(re.findall(r'[\d.-]', line)))
-		line = get_next_nonempty_line(rec)
-	else:
-		pdiff = np.NaN
-	data['dP, kPa'] = pdiff
-
-	# parse inclinometer
-	# ex: '0.0  0.0 grad'
-	if line.find('grad') != -1:
-		inclin = line.split()
-		clin1 = inclin[0]
-		clin2 = inclin[1]
-	else:
-		clin1, clin2 = np.NaN
-	data['Clin1'] = clin1
-	data['Clin2'] = clin2
-
+	val_names = ['P1, hPa']
+	parse_current_line( \
+		lambda l: l.find('1 Bar:') != -1, \
+		val_names, \
+		pressure_line_parser \
+	)
+	
 	# skip everything else
 	while True:
 		if next(rec, None) is None: break
@@ -141,11 +154,12 @@ def read_log_to_dataframe(fnm):
 				# cast from python type to numpy dtype
 				dtype = np.dtype(type(row_data[k]))
 			data[k] = np.ndarray(shape = (n_rec), dtype = dtype)
+			data[k][0] = row_data[k]
 
 		# 'head' output
 		print('extracting data:')
 		for k in data.keys():
-			print(f'\t{k} (e.g. {row_data[k]})')
+			print(f'\t{k} (e.g. {data[k][0]})')
 
 		# pre-init the loop
 		i_rec = 1
@@ -170,4 +184,4 @@ def read_log_to_dataframe(fnm):
 
 if __name__ == '__main__':
 	df = read_log_to_dataframe(_TEST_LOG_FILENAME)
-	df.to_csv('log_parsed.tsv', sep='\t')
+	df.to_csv('.\\data\\log_parsed.tsv', sep='\t')
