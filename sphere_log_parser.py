@@ -86,7 +86,7 @@ def parse_log_record(rec):
 		GPGGA_line_parser \
 	)
 
-	# parse pressure data
+	# parse pressure and temperature data
 	# ex: '0 Bar:  T[ 30983 ] = 30.2 C  P[ 29401 ] = 93.64 kPa (9545.1 mm w)'
 	def pressure_line_parser(l):
 		# conversion constant
@@ -96,16 +96,18 @@ def parse_log_record(rec):
 		# find all digits and decimal point, then glue them,
 		# convert to float, convert to hPa
 		p = float(''.join(re.findall(r'[\d.]', mmwater_str[0])))/mmwater_per_hpa
-		return {val_names[0] : p}
+		# temperature is between '=' and 'C'
+		T = float(re.findall(r'= .* C', l)[0].strip('=C '))
+		return {val_names[0] : p, val_names[1] : T}
 	
-	val_names = ['P0, hPa']
+	val_names = ['P0, hPa', 'T0, C']
 	parse_current_line( \
 		lambda l: l.find('0 Bar:') != -1, \
 		val_names, \
 		pressure_line_parser \
 	)
 
-	val_names = ['P1, hPa']
+	val_names = ['P1, hPa', 'T1, C']
 	parse_current_line( \
 		lambda l: l.find('1 Bar:') != -1, \
 		val_names, \
@@ -179,7 +181,7 @@ def read_log_to_dataframe(filename, record_break_line = '-'*5):
 			# at last, prepare next record iterator
 			rec = extract_log_record(f, record_break_line)
 		
-	print('done!')
+	print('parsing done!')
 
 	# cut unused rows from each array
 	for key in data.keys():
