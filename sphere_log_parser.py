@@ -3,23 +3,26 @@ import datetime
 import pandas as pd
 import numpy as np
 
+from collections import OrderedDict
+
 import time
 
 
 _TEST_LOG_FILENAME = '.\\data\\log_ice\\log.txt'
+EXPECTED_RECORD_LENGTH = 14 # lines per log record
 
 
 def extract_log_record(f, record_break_line = '-'*5):
 	"""
-		Yield lines from log record until record break
-		is met
+		Return iterator for lines in record
 	"""
 	rec = []
 	for line in f:
 		# check for eof
-		if not line or (line.find(record_break_line) != -1):
+		if (line.find(record_break_line) != -1):
 			return iter(rec)
 		rec.append(line[:-1]) # strip newline characters
+	return None
 
 
 def parse_log_record(rec):
@@ -33,7 +36,7 @@ def parse_log_record(rec):
 			line = next(lineit)
 		return line
 
-	def parse_current_line(value_present, data_name_dflt, line_parser):
+	def parse_current_line(value_present, line_data_default, line_parser):
 		"""
 			Wrapper for line_parser that handles default values (if current line
 			doesn't satisfy condition value_preset or if exception is raised while
@@ -44,7 +47,7 @@ def parse_log_record(rec):
 		nonlocal line
 		# initialize dictionary of data in line with
 		# default values
-		line_data = {name : default for name, default in data_name_dflt}
+		line_data = line_data_default
 		if value_present(line):
 			try:
 				# try to use line parser to get dict
@@ -62,36 +65,40 @@ def parse_log_record(rec):
 		return None
 	
 	# parse date/time data, ex: 'Wed Mar 14 14:31:50 2012'
-	data_name_default = [('datetime', np.datetime64('NaT'))]
+	line_data_default = {'datetime' : np.datetime64('NaT')}
 	parse_current_line(
 		lambda s: True, # condition for parsed values
-		data_name_default, # names of parsed values
+		line_data_default, # names of parsed values
 		lambda l: { # line parser
-			data_name_default[0][0] : np.datetime64( datetime.datetime.strptime(l, '%a %b %d %H:%M:%S %Y'))\
-					}
+			list(line_data_default)[0] : np.datetime64( datetime.datetime.strptime(l, '%a %b %d %H:%M:%S %Y'))\
+		}
 	)
 
 	# parse GPS data from GPGGA format
 	# ex: '$GPGGA 063059 5147.8142 N 10423.3275 E 1 09 0.9 447.3 M -37.2 M  *64'
-	data_name_default = [('N, lat', np.NaN),
-				  ('E, lon', np.NaN),
-				  ('H, m', np.NaN),
-				  ('GPS time', np.timedelta64('NaT', 's'))]
+	line_data_default = {'N, lat' : np.NaN,
+				  	 	 'E, lon' : np.NaN,
+					 	 'H, m' : np.NaN,
+						 'GPS time' : np.timedelta64('NaT', 's'),
+						 'GPS stamp' : np.unicode_('      ') # 6 spaces
+						}
 	def GPGGA_line_parser(line):
 		ld = {}
 		GPGGA = line.split()
-		ld[data_name_default[0][0]] = float(GPGGA[2])
-		ld[data_name_default[1][0]] = float(GPGGA[4])
-		ld[data_name_default[2][0]] = float(GPGGA[9])
-		t = GPGGA[1]
+		names = list(line_data_default)
+		ld[names[0]] = float(GPGGA[2])
+		ld[names[1]] = float(GPGGA[4])
+		ld[names[2]] = float(GPGGA[9])
+		t_str = GPGGA[1]
 		# convert to seconds since day start and store in np datetime
-		t = 3600*int(t[:2]) + 60*int(t[2:4]) + int(t[4:])
-		ld[data_name_default[3][0]] = np.timedelta64(t, 's')
+		t = 3600*int(t_str[:2]) + 60*int(t_str[2:4]) + int(t_str[4:])
+		ld[names[3]] = np.timedelta64(t, 's')
+		ld[names[4]] = np.unicode_(t_str) # encoded for storage
 		return ld
 	
 	parse_current_line(
 		lambda l: l.find('$GPGGA') != -1,
-		data_name_default,
+		line_data_default,
 		GPGGA_line_parser
 	)
 
@@ -107,21 +114,20 @@ def parse_log_record(rec):
 		p = float(''.join(re.findall(r'[\d.]', mmwater_str[0])))/mmwater_per_hpa
 		# temperature is between '=' and 'C'
 		T = float(re.findall(r'= .* C', l)[0].strip('=C '))
-		return {data_name_default[0][0] : p, data_name_default[1][0] : T}
+		line_data_names = list(line_data_default)
+		return {line_data_names[0] : p, line_data_names[1] : T}
 	
-	data_name_default = [('P0, hPa', np.NaN),
-				  ('T0, C', np.NaN)]
+	line_data_default = {'P0, hPa' : np.NaN , 'T0, C' : np.NaN}
 	parse_current_line(
 		lambda l: l.find('0 Bar:') != -1,
-		data_name_default,
+		line_data_default,
 		press_temp_line_parser
 	)
 
-	data_name_default = [('P1, hPa', np.NaN),
-				  ('T1, C', np.NaN)]
+	line_data_default = {'P1, hPa' : np.NaN , 'T1, C' : np.NaN}
 	parse_current_line(
 		lambda l: l.find('1 Bar:') != -1,
-		data_name_default,
+		line_data_default,
 		press_temp_line_parser
 	)
 	
@@ -151,8 +157,10 @@ def read_log_to_dataframe(filename, record_break_line = '-'*5):
 	# count log records to preallocate memory
 	print(f'parsing {filename} for telemetry data')
 	print(f'scanning for line count...')
-	n_rec = int((line_count(filename)-1) / 15) + 3
-	print(f'~{n_rec} records found in log file')
+	n_lines = line_count(filename)
+	n_rec = ((n_lines) // EXPECTED_RECORD_LENGTH) + 1
+	print(f'{n_lines} lines found in log, resulting in {n_rec} records ' + 
+		  f'({EXPECTED_RECORD_LENGTH} lines per record expected)')
 
 	# scan file record-by-record and parse to dict,
 	# then create series from dict and add as a row
@@ -165,8 +173,8 @@ def read_log_to_dataframe(filename, record_break_line = '-'*5):
 		data = dict.fromkeys(row_data.keys())
 		for key in data.keys():
 			try: # if data is already in numpy data type
-				dtype = np.dtype(row_data[key])
-			except TypeError:
+				dtype = row_data[key].dtype
+			except AttributeError:
 				# else cast from python type to numpy dtype
 				dtype = np.dtype(type(row_data[key]))
 			data[key] = np.ndarray(shape = (n_rec), dtype = dtype)
@@ -179,20 +187,25 @@ def read_log_to_dataframe(filename, record_break_line = '-'*5):
 
 		# pre-init the loop
 		i_rec = 1
-		rec = extract_log_record(f, record_break_line)
-		while rec and i_rec < n_rec:
+		while True:
+			# create current record iterator
+			rec = extract_log_record(f, record_break_line)
+			# if no record break is hit, rec is None
+			# exit the loop
+			if rec is None:
+				break
 			# parse current record to row
 			row_data = parse_log_record(rec)
-			if row_data is None:
-				break
 			# write row to data dict
 			for key in data.keys():
 				data[key][i_rec] = row_data[key]
 			i_rec += 1
-			# at last, prepare next record iterator
-			rec = extract_log_record(f, record_break_line)
+			if i_rec >= n_rec:
+				raise ValueError('Preallocated size for parsed log data is too small, ' + 
+								 'check if EXPECTED_RECORD_LENGTH constant is right for ' +
+								 'your log (if there are variable-length records, use the shortest)')
 		
-	print('parsing done!')
+	print(f'parsing done! {i_rec} records parsed')
 
 	# cut unused rows from each array
 	for key in data.keys():
