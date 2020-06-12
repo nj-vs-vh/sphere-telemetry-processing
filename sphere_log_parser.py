@@ -9,18 +9,22 @@ import time
 
 
 _TEST_LOG_FILENAME = '.\\data\\log_ice\\log.txt'
-EXPECTED_RECORD_LENGTH = 14 # lines per log record
+#_TEST_LOG_FILENAME = '.\\data\\log_xx_2010.03.18_to_2012.03.12.txt'
 
+# lines per log record; if None, infer from first record
+# might be useful for manual override, if first record is long
+# and others are shorter
+RECORD_LENGTH_OVERRIDE = None
 
 def extract_log_record(f, record_break_line = '-'*5):
 	"""
-		Return iterator for lines in record
+		Return list of lines in record
 	"""
 	rec = []
 	for line in f:
 		# check for eof
 		if (line.find(record_break_line) != -1):
-			return iter(rec)
+			return(rec)
 		rec.append(line[:-1]) # strip newline characters
 	return None
 
@@ -30,46 +34,43 @@ def parse_log_record(rec):
 		Parse log record (list of strings) to data dict
 	"""
 
-	def get_next_nonempty_line(lineit):
-		line = next(lineit, None)
-		while not line:
-			line = next(lineit)
-		return line
-
-	def parse_current_line(value_present, line_data_default, line_parser):
+	def scan_record_for_line(condition, line_data_default, line_parser):
 		"""
-			Wrapper for line_parser that handles default values (if current line
-			doesn't satisfy condition value_preset or if exception is raised while
-			parsing), switches to the next line only if needed, and merges data
-			from line to resulting dictionary
+			Wrapper for line_parser function that scans for lines in record,
+			finds one that satisfy condition (i.e. if word 'Bar' is in the line)
+			and feeds it to line parser. Data pased from line are appended to
+			global data dictionary; if no data is parsed, line_data_default is used
 		"""
+		# if true, scan all lines in record, even if value_present(line) is met
+		GREEDY_LINE_SEARCH = True
 		nonlocal data
-		nonlocal line
-		# initialize dictionary of data in line with
-		# default values
+		nonlocal rec
+		# initialize dictionary of data in line with default values
 		line_data = line_data_default
-		if value_present(line):
-			try:
-				# try to use line parser to get dict
-				# with actual data
-				line_data = line_parser(line)
-			except: pass
-			# if data is present switch to the next line
-			line = get_next_nonempty_line(rec)
+		for line in rec:
+			if condition(line):
+				try:
+					# try to use line parser to get dict
+					# with actual data
+					line_data = line_parser(line)
+				except: pass
+				finally:
+					if not GREEDY_LINE_SEARCH:
+						break
 		# merge line data to final dict
 		data = {**data, **line_data}
 
 	data  = {} # initialize parsing result dictionary
-	line = get_next_nonempty_line(rec)
-	if line is None: # check for empty record
+	if rec is None:
 		return None
 	
-	# parse date/time data, ex: 'Wed Mar 14 14:31:50 2012'
+	# parse date/time data
+	# ex: 'Wed Mar 14 14:31:50 2012'
 	line_data_default = {'datetime' : np.datetime64('NaT')}
-	parse_current_line(
-		lambda s: True, # condition for parsed values
-		line_data_default, # names of parsed values
-		lambda l: { # line parser
+	scan_record_for_line(
+		lambda s: True, # try every line until one is parsed to datetime
+		line_data_default,
+		lambda l: {
 			list(line_data_default)[0] : np.datetime64( datetime.datetime.strptime(l, '%a %b %d %H:%M:%S %Y'))\
 		}
 	)
@@ -96,7 +97,7 @@ def parse_log_record(rec):
 		# ld[names[4]] = np.timedelta64(t, 's')
 		return ld
 	
-	parse_current_line(
+	scan_record_for_line(
 		lambda l: l.find('$GPGGA') != -1,
 		line_data_default,
 		GPGGA_line_parser
@@ -105,13 +106,17 @@ def parse_log_record(rec):
 	# parse pressure and temperature data
 	# ex: '0 Bar:  T[ 30983 ] = 30.2 C  P[ 29401 ] = 93.64 kPa (9545.1 mm w)'
 	def press_temp_line_parser(l):
-		# conversion constant
-		mmwater_per_hpa = 0.10197162129779 * 100
-		# match string in parentesis with mm w units
-		mmwater_str = re.findall(r'\(.* mm w\)', l)
-		# find all digits and decimal point, then glue them,
-		# convert to float, convert to hPa
-		p = float(''.join(re.findall(r'[\d.]', mmwater_str[0])))/mmwater_per_hpa
+		# try to find string in parentesis with mm w units
+		p_mmwater = re.findall(r'\(.*.mm.w\)', l)
+		if len(p_mmwater)>0: # if found, read mm w pressure
+			# conversion constant
+			mmwater_per_hpa = 0.10197162129779 * 100
+			# find all digits and decimal point, then glue them,
+			# convert to float, convert to hPa
+			p = float(''.join(re.findall(r'[\d.]', p_mmwater[0])))/mmwater_per_hpa
+		else:
+			# else try to find pressure in hpa
+			p = float(re.findall(r'=.{7,10}hpa', l)[0].strip(' =hpa'))
 		# temperature is between '=' and 'C'
 		T = float(re.findall(r'= .* C', l)[0].strip('=C '))
 		codes = re.findall(r'\[ .{3,9} \]', l)
@@ -128,7 +133,7 @@ def parse_log_record(rec):
 						 'T{}, C'.format(press_temp_i) : np.NaN,
 						 'T{}_code'.format(press_temp_i) : -1, # NaN can't handle integer values
 						 'P{}_code'.format(press_temp_i) : -1}
-	parse_current_line(
+	scan_record_for_line(
 		lambda l: l.find('0 Bar:') != -1,
 		line_data_default,
 		press_temp_line_parser
@@ -139,15 +144,11 @@ def parse_log_record(rec):
 						 'T{}, C'.format(press_temp_i) : np.NaN,
 						 'T{}_code'.format(press_temp_i) : -1, # NaN can't handle integer values
 						 'P{}_code'.format(press_temp_i) : -1}
-	parse_current_line(
+	scan_record_for_line(
 		lambda l: l.find('1 Bar:') != -1,
 		line_data_default,
 		press_temp_line_parser
 	)
-	
-	# skip everything else
-	while True:
-		if next(rec, None) is None: break
 
 	return data
 
@@ -172,20 +173,33 @@ def read_log_to_dataframe(filename, record_break_line = '-'*5):
 	print(f'parsing {filename} for telemetry data')
 	print(f'scanning for line count...')
 	n_lines = line_count(filename)
-	n_rec = ((n_lines) // EXPECTED_RECORD_LENGTH) + 1
-	print(f'{n_lines} lines found in log, resulting in {n_rec} records ' + 
-		  f'({EXPECTED_RECORD_LENGTH} lines per record expected)\n' + 
-		   'parsing...')
+	print(f'{n_lines} lines found in log')
 
 	# scan file record-by-record and parse to dict,
 	# then create series from dict and add as a row
 	# to final DataFrame
 	with open(filename, 'r', buffering=2**24) as f:
+		# read first record from log
 		rec = extract_log_record(f, record_break_line)
 		row_data = parse_log_record(rec)
 
+		# count lines in record to estimate records per log
+		if RECORD_LENGTH_OVERRIDE is None:
+			# +1 is for record break line (not included in rec)
+			# -1 is to slightly underestimate record length, i.e.
+			# overestimate number of records and preallocate
+			# bigger arrays
+			rec_len = len(rec) + 1 - 1
+			print(f'record length is estimated from 1st record to be {rec_len}')
+		else:
+			rec_len = RECORD_LENGTH_OVERRIDE
+			print(f'record length is manually set in RECORD_LENGTH_OVERRIDE constant to be {rec_len}')
+		n_rec = (n_lines // rec_len) + 1
+		print(f'number of records in log is estimated as {n_rec}')
+
 		# preallocate numpy.ndarray based on first row
 		data = dict.fromkeys(row_data.keys())
+		print('extracting values:')
 		for key in data.keys():
 			try: # if data is already in numpy data type
 				dtype = row_data[key].dtype
@@ -194,8 +208,10 @@ def read_log_to_dataframe(filename, record_break_line = '-'*5):
 				dtype = np.dtype(type(row_data[key]))
 			data[key] = np.ndarray(shape = (n_rec), dtype = dtype)
 			data[key][0] = row_data[key]
+			print(f'{key}, type {dtype}')
+		print('...')
 
-		# pre-init the loop
+		# main loop
 		i_rec = 1
 		while True:
 			# create current record iterator
@@ -211,9 +227,15 @@ def read_log_to_dataframe(filename, record_break_line = '-'*5):
 				data[key][i_rec] = row_data[key]
 			i_rec += 1
 			if i_rec >= n_rec:
-				raise ValueError('Preallocated size for log data is too small, ' + 
-								 'check if EXPECTED_RECORD_LENGTH constant is right for ' +
-								 'your log (if there are variable-length records, use the shortest)')
+				if RECORD_LENGTH_OVERRIDE is None:
+					msg = ('Record length inferred from data is too big, ' + 
+						   'try manually setting RECORD_LENGTH_OVERRIDE in source code ' + 
+						   'to the size (in # of lines) of the shortest record in your log')
+				else:
+					msg = ('Overriden record length RECORD_LENGTH_OVERRIDE=' + 
+						   '{} is too big, '.format(RECORD_LENGTH_OVERRIDE) + 
+						   'try lesser value or None to infer record length from log')
+				raise ValueError(msg)
 		
 	print(f'done! {i_rec} records parsed')
 
