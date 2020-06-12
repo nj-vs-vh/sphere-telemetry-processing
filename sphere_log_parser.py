@@ -79,8 +79,8 @@ def parse_log_record(rec):
 	line_data_default = {'N, lat' : np.NaN,
 				  	 	 'E, lon' : np.NaN,
 					 	 'H, m' : np.NaN,
-						 'GPS time' : np.timedelta64('NaT', 's'),
-						 'GPS stamp' : np.unicode_('      ') # 6 spaces
+						 'GPS stamp' : -1
+						 #'GPS time' : np.timedelta64('NaT', 's'),
 						}
 	def GPGGA_line_parser(line):
 		ld = {}
@@ -90,10 +90,10 @@ def parse_log_record(rec):
 		ld[names[1]] = float(GPGGA[4])
 		ld[names[2]] = float(GPGGA[9])
 		t_str = GPGGA[1]
-		# convert to seconds since day start and store in np datetime
-		t = 3600*int(t_str[:2]) + 60*int(t_str[2:4]) + int(t_str[4:])
-		ld[names[3]] = np.timedelta64(t, 's')
-		ld[names[4]] = np.unicode_(t_str) # encoded for storage
+		ld[names[3]] = int(t_str)
+		# convert to seconds since day start and store in np timedelta64
+		# t = 3600*int(t_str[:2]) + 60*int(t_str[2:4]) + int(t_str[4:])
+		# ld[names[4]] = np.timedelta64(t, 's')
 		return ld
 	
 	parse_current_line(
@@ -114,17 +114,31 @@ def parse_log_record(rec):
 		p = float(''.join(re.findall(r'[\d.]', mmwater_str[0])))/mmwater_per_hpa
 		# temperature is between '=' and 'C'
 		T = float(re.findall(r'= .* C', l)[0].strip('=C '))
+		codes = re.findall(r'\[ .{3,9} \]', l)
+		T_code = int(codes[0].strip(' []'))
+		P_code = int(codes[1].strip(' []'))
 		line_data_names = list(line_data_default)
-		return {line_data_names[0] : p, line_data_names[1] : T}
+		return {line_data_names[0] : p,
+				line_data_names[1] : T,
+				line_data_names[2] : T_code,
+				line_data_names[3] : P_code}
 	
-	line_data_default = {'P0, hPa' : np.NaN , 'T0, C' : np.NaN}
+	press_temp_i = 0
+	line_data_default = {'P{}, hPa'.format(press_temp_i) : np.NaN,
+						 'T{}, C'.format(press_temp_i) : np.NaN,
+						 'T{}_code'.format(press_temp_i) : -1, # NaN can't handle integer values
+						 'P{}_code'.format(press_temp_i) : -1}
 	parse_current_line(
 		lambda l: l.find('0 Bar:') != -1,
 		line_data_default,
 		press_temp_line_parser
 	)
 
-	line_data_default = {'P1, hPa' : np.NaN , 'T1, C' : np.NaN}
+	press_temp_i = 1
+	line_data_default = {'P{}, hPa'.format(press_temp_i) : np.NaN,
+						 'T{}, C'.format(press_temp_i) : np.NaN,
+						 'T{}_code'.format(press_temp_i) : -1, # NaN can't handle integer values
+						 'P{}_code'.format(press_temp_i) : -1}
 	parse_current_line(
 		lambda l: l.find('1 Bar:') != -1,
 		line_data_default,
@@ -160,7 +174,8 @@ def read_log_to_dataframe(filename, record_break_line = '-'*5):
 	n_lines = line_count(filename)
 	n_rec = ((n_lines) // EXPECTED_RECORD_LENGTH) + 1
 	print(f'{n_lines} lines found in log, resulting in {n_rec} records ' + 
-		  f'({EXPECTED_RECORD_LENGTH} lines per record expected)')
+		  f'({EXPECTED_RECORD_LENGTH} lines per record expected)\n' + 
+		   'parsing...')
 
 	# scan file record-by-record and parse to dict,
 	# then create series from dict and add as a row
@@ -180,11 +195,6 @@ def read_log_to_dataframe(filename, record_break_line = '-'*5):
 			data[key] = np.ndarray(shape = (n_rec), dtype = dtype)
 			data[key][0] = row_data[key]
 
-		# 'head' output
-		#print('extracting data:')
-		#for key in data.keys():
-		#	print(f'\t{key} (e.g. {data[key][0]})')
-
 		# pre-init the loop
 		i_rec = 1
 		while True:
@@ -201,11 +211,11 @@ def read_log_to_dataframe(filename, record_break_line = '-'*5):
 				data[key][i_rec] = row_data[key]
 			i_rec += 1
 			if i_rec >= n_rec:
-				raise ValueError('Preallocated size for parsed log data is too small, ' + 
+				raise ValueError('Preallocated size for log data is too small, ' + 
 								 'check if EXPECTED_RECORD_LENGTH constant is right for ' +
 								 'your log (if there are variable-length records, use the shortest)')
 		
-	print(f'parsing done! {i_rec} records parsed')
+	print(f'done! {i_rec} records parsed')
 
 	# cut unused rows from each array
 	for key in data.keys():
@@ -215,4 +225,6 @@ def read_log_to_dataframe(filename, record_break_line = '-'*5):
 
 if __name__ == '__main__':
 	df = read_log_to_dataframe(_TEST_LOG_FILENAME)
-	df.to_csv('.\\data\\log_parsed.tsv', sep='\t')
+	df.to_csv('.\\data\\log_parsed.tsv', 
+			  sep='\t',
+			  date_format='%x %X')
