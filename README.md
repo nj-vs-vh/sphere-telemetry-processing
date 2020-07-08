@@ -13,3 +13,9 @@ df = slp.read_log_to_dataframe(filename, parsing_config=slp.GROUND_DATA_CONFIG, 
 ```python
 help(slp)
 ```
+
+## heigh_correction
+
+— пакет для коррекции показаний GPS-датчика высоты по данным барометра
+
+Глобальный импорт как пакета пока не настроен, можно работать вручную через `main.py`
