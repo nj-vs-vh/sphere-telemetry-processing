@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 from matplotlib.colors import Normalize
 
+from config import DATA_DIR, DATUM_FILES
+
 
 #### Manually tuned filtering parameters ####
 
@@ -88,4 +90,11 @@ def continuous_chunks(df: pd.DataFrame, dt_tolerance_medians: int = 100):
     for chunk_start, chunk_end in zip(chunk_breaks[:-1], chunk_breaks[1:]):
         ch = df.iloc[chunk_start:chunk_end, :]
         if validate_chunk(ch):
+            yield ch
+
+
+def chunks_from_datum_list():
+    for datum_file in DATUM_FILES:
+        df = pd.read_csv(DATA_DIR + datum_file)
+        for ch in continuous_chunks(df):
             yield ch

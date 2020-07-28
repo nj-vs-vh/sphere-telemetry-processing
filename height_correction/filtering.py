@@ -5,7 +5,56 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from config import INTERP_TYPE
+from config import INTERP_TYPE, FILTER_CONF
+
+
+def intervals_from_mask(mask, polarity=True):
+    """
+    Convert bool mask to slices with given polarity
+
+    Ex.: [0, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1] -> [(3,6), (8,9), (11,13)]
+
+    Resulting tuples are ready for slicing, i.e.
+    for i, j in intervals_from_mask(mask):
+        assert mask[i:j].all() == True
+    """
+    if len(mask)==0:
+        return []
+    if mask[0]==polarity:
+        start_idx = 0
+    else:
+        start_idx = 1
+    intervalends = np.nonzero(np.diff(mask) != False)[0]
+    intervalends = [-1] + list(intervalends) + [len(mask)-1]
+    return [
+        (intervalends[i]+1, intervalends[i+1]+1)
+        for i in range(start_idx, len(intervalends)-1, 2)
+    ]
+
+
+def smooth_intervals(intervals, smallest_gap=30, smallest_length=20):
+
+    def merge_interval_with_next(intervals, i):
+        before = intervals[:i]
+        merged = (intervals[i][0], intervals[i+1][1])
+        after = intervals[i+2:] if i+2<len(intervals) else []
+        return [*before, merged, *after]
+
+    while True:
+        gaps = [intervals[i+1][0]-intervals[i][1] for i in range(len(intervals)-1)]
+        if len(gaps)==0 or min(gaps) > smallest_gap:
+            break
+        else:
+            intervals = merge_interval_with_next(intervals, np.argmin(gaps))
+
+    while True:
+        lengths = [i[1]-i[0] for i in intervals]
+        if len(lengths)==0 or min(lengths)>smallest_length:
+            break
+        else:
+            intervals.pop(np.argmin(lengths))
+
+    return intervals
 
 
 def normalize_array(a: np.ndarray) -> np.ndarray:
@@ -14,6 +63,18 @@ def normalize_array(a: np.ndarray) -> np.ndarray:
 
 def timedelta2sec(dt: np.timedelta64):
     return dt / np.timedelta64(10**9, 'ns')
+
+
+def extract_time_series(df):
+    """Convert dataframe (2 columns) to 2 numpy arrays"""
+    t = df.iloc[:,0].to_numpy()
+    t = t-t[0]
+    y = df.iloc[:,1].to_numpy()
+    mask = np.logical_not(np.isnan(y))
+    return (
+        timedelta2sec(t[mask]),
+        y[mask]
+    )
 
 
 def to_uniform_grid(x, *y):
@@ -65,7 +126,7 @@ def to_uniform_grid(x, *y):
 
 
 def create_butterworth_hpf(cutoff_hz, slope_db_oct, timestamps, filter_out = 'sos'):
-    fs_hz = 1 / timestamps[1]-timestamps[0]
+    fs_hz = 1 / (timestamps[1]-timestamps[0])
     nyq_hz = 0.5 * fs_hz
     wp = cutoff_hz / nyq_hz # lower edge of the passband
     k = 3 # more or less arbitrary, >=1
@@ -77,7 +138,8 @@ def create_butterworth_hpf(cutoff_hz, slope_db_oct, timestamps, filter_out = 'so
     return signal.butter(N, Wn, btype='highpass', output=filter_out)
 
 
-def filter_array(x, sos):
+def filter_array(t, x):
+    sos = create_butterworth_hpf(FILTER_CONF['cutoff'], FILTER_CONF['slope'], t)
     return signal.sosfiltfilt(sos, x)
 
 
@@ -92,3 +154,8 @@ def plot_filter_response(cutoff_hz, slope_db_oct, fs_hz):
     plt.grid(which='both', axis='both')
     plt.axvline(cutoff_hz, color='green') # cutoff frequency
     plt.show()
+
+
+if __name__ == "__main__":
+    print(intervals_from_mask([0, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1]))
+    print(smooth_intervals([(3, 6), (8, 9), (11, 13)]))
