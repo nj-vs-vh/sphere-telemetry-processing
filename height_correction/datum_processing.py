@@ -59,7 +59,7 @@ def validate_chunk(ch: pd.DataFrame) -> bool:
     return True
 
 
-def continuous_chunks(df: pd.DataFrame, dt_tolerance_medians: int = 100):
+def continuous_intervals(df: pd.DataFrame, dt_tolerance_medians: int = 100):
     """Generator function to extrat continuous periods of time from datum
 
     Args:
@@ -93,8 +93,8 @@ def continuous_chunks(df: pd.DataFrame, dt_tolerance_medians: int = 100):
             yield ch
 
 
-def chunks_from_datum_list():
+def intervals_from_datum_files():
     for datum_file in DATUM_FILES:
         df = pd.read_csv(DATA_DIR + datum_file)
-        for ch in continuous_chunks(df):
+        for ch in continuous_intervals(df):
             yield ch

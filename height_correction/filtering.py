@@ -83,10 +83,13 @@ def to_uniform_grid(x, *y):
     Uniform grid is inferred from x to have the same median step.
 
     Args:
-        x  (nd.ndarray | pd.Series): original time stamps in numeric or timedelta64(ns)
-        *y (nd.ndarray | pd.Series): arbitrary number of time series
+        x  (np.ndarray | pd.Series): original time stamps in numeric or timedelta64(ns)
+        *y (np.ndarray | pd.Series): arbitrary number of time series
 
     OR  x  (pd.DataFrame): first column is treated as timestamps, others — as time series
+
+    Returns:
+        x_grid, y_grid (np.ndarray): same signature as input, but interpoalated on grid
     """
     if not y:
         df = x

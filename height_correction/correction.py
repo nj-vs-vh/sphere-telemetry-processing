@@ -49,7 +49,7 @@ def indicator(t, y1, y2):
     return moving_average_smoothing(t, one_sided_diff, n=window_size)
 
 
-def process_chunk(df: pd.DataFrame):
+def process_interval(df: pd.DataFrame):
     t, (_, H_P) = filtering.to_uniform_grid(df.loc[:, ['datetime', 'H', 'H_P']])
     
     # for fitting
