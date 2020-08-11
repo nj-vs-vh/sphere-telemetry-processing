@@ -227,9 +227,7 @@ Led = _DataParserFactory(
 # Helper functions
 
 
-def _parse_value_from_between(line,
-                             lbnd, rbnd,
-                             target_type):
+def _parse_value_from_between(line, lbnd, rbnd, target_type):
     """
     Extract value between 'lbnd' and 'rbnd' from 'line' and
     cast it to 'type'. If there are several values, return first.

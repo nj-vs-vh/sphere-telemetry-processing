@@ -26,8 +26,15 @@ GROUND_DATA_CONFIG = [
     dp.Inclin,
 ]
 
-# YOUR_DATA_CONFIG = [
-#     data_parsers.Datetime,
+INCLINOMETER_INIT_CONFIG = [
+    dp.Datetime,
+    dp.GPS_basic,
+    dp.Inclin,
+]
+
+# YOUR_CONFIG = [
+#     dp.Datetime,
+#     ...
 # ]
 
 # create __all__ list with all not-hidden all-cpas names
