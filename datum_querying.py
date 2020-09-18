@@ -40,7 +40,9 @@ def read_datum_for_year(year):
         warn(f'No datum file found for the year {year}; check for \'{datum_filename}\'')
         return None
     df.insert(0, 'datetime', datum_datetime(df))
-    df.set_index('datetime', inplace=True)
+    df.set_index('datetime', inplace=True, drop=False)
+    df.index.name = 'local_dt_index'
+    df.drop(columns=['year', 'month', 'day', 'time'], inplace=True)
     return df
 
 

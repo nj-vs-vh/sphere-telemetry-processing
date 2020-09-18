@@ -5,7 +5,7 @@ see GROUND_DATA_FIELDS for example (stick to ALL_CAPS naming convention).
 
 Also, function to print parsing config is provided"""
 
-import sphere_log_parser.data_parsers as dp
+from . import data_parsers as dp
 from collections import namedtuple
 
 # automatically collect all non-private classes from data_parsers.py

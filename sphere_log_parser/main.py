@@ -3,10 +3,10 @@ import pandas as pd
 import numpy as np
 
 # module with configs -- lists of data parser objects
-import sphere_log_parser.parsing_configs as parsing_configs
+from . import parsing_configs
 
 
-_TEST_LOG_FILENAME = '..\\data\\logs\\log_onboard_example.txt'
+_TEST_LOG_FILENAME = 'data\\logs\\log_onboard_example.txt'
 
 # lines per log record; if None, infer from first record
 # might be useful for manual override, if first record is long
@@ -33,13 +33,14 @@ def parse_log_record(rec, parsing_config):
     <parse_config> and returns named tuple with all
     fields from config
     """
-    def scan_record(data_parser):
-        """Wrapper for data parser that is responsible for line scanning,
-        default values, exception handling
-        """
+    # check for empty record
+    if rec is None:
+        return None
+    # create dict with default values
+    rec_data = parsing_configs.merge_config_to_dict(parsing_config)
+    for data_parser in parsing_config:
         # if true, scan all lines in record, even if parsable line is met
         GREEDY_LINE_SEARCH = True
-        nonlocal rec_data
         line_data = None
         for line in rec:
             if data_parser.found(line):
@@ -54,14 +55,6 @@ def parse_log_record(rec, parsing_config):
         if line_data:
             for field in line_data._fields:
                 rec_data[field] = getattr(line_data, field)
-
-    # check for empty record
-    if rec is None:
-        return None
-    # create dict with default values
-    rec_data = parsing_configs.merge_config_to_dict(parsing_config)
-    for data_parser in parsing_config:
-        scan_record(data_parser)
     return rec_data
 
 
@@ -170,9 +163,27 @@ def read_log_to_dataframe(filename,
     return pd.DataFrame(data=data)
 
 
+def yield_log_as_dicts(filename, record_break_seq='-'*5):
+    """Low-level parsing func, yields log records one-by-one as dicts
+
+    Args:
+        same as in read_log_to_dataframe
+    """
+    with codecs.open(
+        filename, 'r', encoding='utf-8', errors='ignore', buffering=2**24
+    ) as f:
+        while True:
+            rec = extract_log_record(f, record_break_seq)
+            if rec is None:  # check for EOF
+                break
+            yield parse_log_record(rec, parsing_configs.ALL_FIELDS_CONFIG)
+
+
 if __name__ == '__main__':
-    df = read_log_to_dataframe(_TEST_LOG_FILENAME,
-                               logging=True)
-    df.to_csv('..\\data\\log_parsed.tsv',
-              sep='\t',
-              date_format='%x %X')
+    from pprint import pprint
+
+    telemetry_gen = yield_log_as_dicts(_TEST_LOG_FILENAME)
+    for i, d in enumerate(telemetry_gen):
+        pprint(d)
+        if i > 10:
+            break
