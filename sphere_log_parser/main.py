@@ -163,7 +163,7 @@ def read_log_to_dataframe(filename,
     return pd.DataFrame(data=data)
 
 
-def yield_log_as_dicts(filename, record_break_seq='-'*5):
+def yield_log_records_as_dicts(filename, record_break_seq='-'*5):
     """Low-level parsing func, yields log records one-by-one as dicts
 
     Args:
@@ -182,7 +182,7 @@ def yield_log_as_dicts(filename, record_break_seq='-'*5):
 if __name__ == '__main__':
     from pprint import pprint
 
-    telemetry_gen = yield_log_as_dicts(_TEST_LOG_FILENAME)
+    telemetry_gen = yield_log_records_as_dicts(_TEST_LOG_FILENAME)
     for i, d in enumerate(telemetry_gen):
         pprint(d)
         if i > 10:

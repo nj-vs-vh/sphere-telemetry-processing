@@ -18,4 +18,4 @@ To see all available data parsers:
 """
 
 from .parsing_configs import *  # __all__ property defines wildcard import for all-caps variables
-from .main import read_log_to_dataframe, yield_log_as_dicts
+from .main import read_log_to_dataframe, yield_log_records_as_dicts

@@ -6,13 +6,13 @@ import pandas as pd
 
 from tqdm import tqdm
 
-from datum_querying import read_datum_for_year
+from datum_querying import datum_datetime
  
 # assuming Mongo is running as mongod process/service and listening on localhost port 27017
 # for installation see https://docs.mongodb.com/manual/administration/install-community/
 # for restoring data from dump see README.md
 client = MongoClient()
-datum_telemetry_collection = client.sphere_telemetry.from_datum
+datum_telemetry_collection = client.sphere_telemetry.from_datum_tables
 
 columns_to_drop = {
     'Gqi',
@@ -47,13 +47,37 @@ column_name_unification = {
 }
 
 
-for year in range(2009, 2014):
-    datum = read_datum_for_year(year)
+datum_filenames = [
+    'datum_2009_sec.csv',
+    'datum_2010_sec.csv',
+    'datum_2011_sec.csv',
+    'datum_2012_sec.csv',
+    'datum_2013_sec.csv',
+]
+
+# store datum filenames with ids (used as foreign key)
+datum_filenames_collection = client.sphere_telemetry.datum_filenames
+for id_, datum_filename in enumerate(datum_filenames):
+    datum_filenames_collection.update_one(
+        filter={'id': id_},
+        update={"$set": {'id': id_, 'filename': datum_filename}},
+        upsert=True,
+    )
+
+
+for datum_filename in datum_filenames:
+    datum_path = f'data\\datum_tables\\{datum_filename}'
+    print(f'loading datum from {datum_path}...')
+    datum_filename_id = datum_filenames_collection.find_one({'filename': datum_filename})['id']
+
+    datum = pd.read_csv(datum_path)
+    datum.insert(0, 'utc_dt', datum_datetime(datum))
+    datum.set_index('utc_dt', inplace=True, drop=False)
+    datum.index.name = 'local_dt_index'
+    datum.drop(columns=['year', 'month', 'day', 'time'], inplace=True)
 
     datum.drop(columns=columns_to_drop, inplace=True)
     datum.rename(columns=column_name_unification, inplace=True)
-
-    print(f'loading datum for the year {year}...')
     for _, record_series in tqdm(datum.iterrows()):
         record_series.dropna(inplace=True)
         record = record_series.to_dict()
@@ -61,9 +85,8 @@ for year in range(2009, 2014):
             datum_telemetry_collection.update_one(
                 filter={"utc_dt": {"$eq": record['utc_dt']}},
                 update={
-                    "$setOnInsert": {
-                        key: val for key, val in record.items() if val != -1
-                    }
+                    "$setOnInsert": {key: val for key, val in record.items() if val != -1},
+                    "$set": {'source_id': datum_filename_id},
                 },
                 upsert=True
             )
