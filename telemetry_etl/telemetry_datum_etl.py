@@ -1,4 +1,4 @@
-"""Module for parsing telemetry data from logs and storing in local MongoDB"""
+"""Module for parsing telemetry data from datum tables and storing in local MongoDB"""
 
 from pymongo import MongoClient
 import numpy as np
