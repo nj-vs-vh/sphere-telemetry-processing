@@ -1,13 +1,12 @@
 """Module for parsing telemetry data from datum tables and storing in local MongoDB"""
 
 from pymongo import MongoClient
-import numpy as np
 import pandas as pd
 
 from tqdm import tqdm
 
 from datum_querying import datum_datetime
- 
+
 # assuming Mongo is running as mongod process/service and listening on localhost port 27017
 # for installation see https://docs.mongodb.com/manual/administration/install-community/
 # for restoring data from dump see README.md
@@ -36,7 +35,7 @@ column_name_unification = {
     'P_hpa1': 'P1_hPa',
     'T1,C': 'T1_C',
     'U15,V': 'U15',
-    'U5,V': 'U5',       
+    'U5,V': 'U5',
     'Uac,V': 'Uac',
     'I,A': 'I',
     'Tpow,C': 'Tp_C',

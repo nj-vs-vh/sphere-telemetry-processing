@@ -17,5 +17,5 @@ To see all available data parsers:
 >>> slp.print_config(ALL_FIELDS_CONFIG)
 """
 
-from .parsing_configs import *  # __all__ property defines wildcard import for all-caps variables
+from .parsing_configs import *  # __all__ property restricts wildcard import only to all-caps variables
 from .main import read_log_to_dataframe, yield_log_records_as_dicts

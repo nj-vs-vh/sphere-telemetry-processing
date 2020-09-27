@@ -4,7 +4,11 @@ import matplotlib.pyplot as plt
 
 import correction
 
-from visualizations import animate_filtered_scatter, plot_filtering_masking, plot_correlation
+from visualizations import (
+    animate_filtered_scatter,
+    plot_filtering_masking,
+    plot_correlation,
+)
 from datum_processing import intervals_from_datum_files
 from config import DATA_DIR, DATUM_FILES, PSEUDOHEIGH_CONF
 
@@ -12,8 +16,10 @@ from config import DATA_DIR, DATUM_FILES, PSEUDOHEIGH_CONF
 def calculate_pseudo_height(df: pd.DataFrame):
     df.insert(
         len(df.columns),
-        column = 'H_P',
-        value = PSEUDOHEIGH_CONF['H0'] - PSEUDOHEIGH_CONF['a'] * np.log(df['P_hpa1'].to_numpy() / PSEUDOHEIGH_CONF['p0'])
+        column="H_P",
+        value=PSEUDOHEIGH_CONF["H0"]
+        - PSEUDOHEIGH_CONF["a"]
+        * np.log(df["P_hpa1"].to_numpy() / PSEUDOHEIGH_CONF["p0"]),
     )
 
 

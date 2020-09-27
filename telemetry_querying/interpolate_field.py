@@ -21,7 +21,7 @@ def next_to_dt(field: str, dt: datetime, direction: int) -> Any:
 
 def interpolate_field(field: str, dt: datetime, kind: str = 'linear') -> Any:
     """Get linearly interpolated value of 'field' from database at arbitrary datetime 'dt'
-    
+
     Supported interpolation types: linear, nearest
     """
     ldt, lval = next_to_dt(field, dt, -1)
