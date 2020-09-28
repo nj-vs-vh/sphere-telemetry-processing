@@ -1,7 +1,6 @@
-from .interpolate_field import interpolate_field  # noqa
+from .interpolate_field import interpolate_field
 
-all_field_names = [
-    "interpolate_field",
+telemetry_field_names = [
     "_id",
     "utc_dt"
     "E_lon", "N_lat", "H_m", "HDOP", "Nsat",
@@ -18,3 +17,6 @@ all_field_names = [
     "from_onboard",
     "source_id",
 ]
+
+
+__all__ = ['interpolate_field', 'telemetry_field_names']
