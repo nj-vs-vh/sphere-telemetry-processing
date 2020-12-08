@@ -61,16 +61,9 @@ def interpolate_field(coll: Collection, field: str, dts: List[datetime], kind: s
 
 
 if __name__ == "__main__":
-    # special collection for internal testing! do not run
     client = MongoClient()
-    test = client.sphere_telemetry.interptest
+    test = client.sphere_telemetry.master
     dt = [
-        datetime.strptime("2000-01-01 00:00:00", r"%Y-%m-%d %X"),
-        datetime.strptime("2000-01-01 00:01:00", r"%Y-%m-%d %X"),
-        datetime.strptime("2000-01-01 00:02:00", r"%Y-%m-%d %X"),
-        datetime.strptime("2000-01-01 00:09:00", r"%Y-%m-%d %X"),
-        datetime.strptime("2000-01-01 00:11:00", r"%Y-%m-%d %X"),
-        datetime.strptime("2000-01-01 00:25:00", r"%Y-%m-%d %X"),
-        datetime.strptime("2000-01-01 00:30:00", r"%Y-%m-%d %X")
+        datetime.strptime("2011-03-14 00:00:00", r"%Y-%m-%d %X"),
     ]
-    print(interpolate_field(test, 'b', dt))
+    print(interpolate_field(test, 'N_lat', dt, kind='nearest'))
