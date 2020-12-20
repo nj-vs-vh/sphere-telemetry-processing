@@ -181,6 +181,7 @@ $RECYCLE.BIN/
 
 data
 *.csv
+*.tsv
 sphere_log_parser/.vscode/
 .vscode/settings.json
 func_interning_test.py
