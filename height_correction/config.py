@@ -1,4 +1,6 @@
-DATA_DIR = ".\\data\\datum_tables\\"
+from pathlib import Path
+
+DATA_DIR = Path(__file__).parent / "../data/datum_tables/"
 DATUM_FILES = [
     "datum_2013_sec.csv",
     # 'datum_2012_sec.csv'

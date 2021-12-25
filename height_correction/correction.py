@@ -148,7 +148,7 @@ def barometric_height_correction(t, H, P, mask, imin, imax):
     H_points = np.array((*H_left, *H_right))
     weights = np.array((*weights_left, *weights_right))
 
-    PLOTTING = False
+    PLOTTING = True
 
     if PLOTTING:
         plt.plot(P_points, H_points, "b.")

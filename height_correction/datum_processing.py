@@ -98,6 +98,6 @@ def continuous_intervals(df: pd.DataFrame, dt_tolerance_medians: int = 100):
 
 def intervals_from_datum_files():
     for datum_file in DATUM_FILES:
-        df = pd.read_csv(DATA_DIR + datum_file)
+        df = pd.read_csv(str(DATA_DIR / datum_file))
         for ch in continuous_intervals(df):
             yield ch

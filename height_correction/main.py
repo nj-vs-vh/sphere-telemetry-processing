@@ -28,6 +28,6 @@ if __name__ == "__main__":
     for ch in intervals_from_datum_files():
         calculate_pseudo_height(ch)
         plot_filtering_masking(ch)
-        # correction.process_interval(ch)
-        # res = res.append(ch)
-    # res.to_csv('datum_with_corrected_H.csv')
+        correction.process_interval(ch)
+        res = res.append(ch)
+    res.to_csv('datum_with_corrected_H.csv')
