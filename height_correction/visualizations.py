@@ -134,7 +134,7 @@ def plot_patch_collection_from_mask(t, mask, ax):
         ax.add_collection(patches)
 
 
-def plot_filtering_masking(df, fig=None):
+def plot_filtering_masking(df, i: int, fig=None):
     if fig is None:
         fig = plt.figure()
     fig.clf()
@@ -167,6 +167,8 @@ def plot_filtering_masking(df, fig=None):
     t_ind, indicator = correction.indicator(t, H_flt_norm, P_flt_norm)
     indicator_mask = np.greater(indicator, INDICATOR_THRESHOLD)
 
+    # print(f"indicator mean = {np.mean(indicator)}; std = {np.std(indicator)}")
+
     #### Plotting ####
     H_color = "tab:blue"
     H_flt_color = "tab:red"
@@ -198,7 +200,7 @@ def plot_filtering_masking(df, fig=None):
     ax_flt.legend()
     plt.setp(ax_flt.get_xticklabels(), visible=False)
 
-    ax_thresh.set_ylabel("$\Delta H^{(HPF)}, m$")
+    ax_thresh.set_ylabel(r"$\Delta H^{(HPF)}, m$")
     ax_thresh.plot(
         t_ind,
         indicator,
@@ -210,6 +212,7 @@ def plot_filtering_masking(df, fig=None):
     )
     ax_thresh.legend()
 
+    ax_thresh.set_xticks(ticks)
     ax_thresh.set_xticklabels(
         (t_start + np.timedelta64(int(tick), "s")).strftime("%X") for tick in ticks
     )
@@ -217,4 +220,4 @@ def plot_filtering_masking(df, fig=None):
 
     # ax_H.set_xlim(20000, 25000) # manual for 2013 flight 3
 
-    plt.show()
+    plt.savefig(f"pics/pic-interval-{i}")

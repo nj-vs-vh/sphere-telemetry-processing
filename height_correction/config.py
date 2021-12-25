@@ -29,3 +29,8 @@ PSEUDOHEIGH_CONF = {
 
 TEMP_DIFF_SAMPLE_SAVING = False
 TEMP_DIFF_SAMPLE_FILE = "temp.txt"
+
+PLOTTING_CONF = {
+    "barometric_height_correction": False,
+    "H_histogram": True,
+}

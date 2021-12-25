@@ -1,6 +1,5 @@
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 
 import correction
 
@@ -25,9 +24,9 @@ def calculate_pseudo_height(df: pd.DataFrame):
 
 if __name__ == "__main__":
     res = pd.DataFrame()
-    for ch in intervals_from_datum_files():
+    for i, ch in enumerate(intervals_from_datum_files()):
         calculate_pseudo_height(ch)
-        plot_filtering_masking(ch)
-        correction.process_interval(ch)
+        plot_filtering_masking(ch, i)
+        correction.process_interval(ch, i)
         res = res.append(ch)
     res.to_csv('datum_with_corrected_H.csv')

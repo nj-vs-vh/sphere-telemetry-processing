@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 
 import pandas as pd
 
-from config import CORRECTION_CONF, INDICATOR_THRESHOLD
+from config import CORRECTION_CONF, INDICATOR_THRESHOLD, PLOTTING_CONF
 
 import filtering
 
@@ -19,14 +19,14 @@ def moving_correlation(t, s1, s2):
     t_corr = t[window:]
     r_corr = np.zeros_like(t_corr, dtype=np.dtype("float64"))
     for i in range(window, len(t)):
-        r_corr[i - window] = pearsonr(s1[i - window : i], s2[i - window : i])[0]
+        r_corr[i - window] = pearsonr(s1[i - window:i], s2[i - window:i])[0]
     return t_corr, r_corr
 
 
 def moving_average(a, n):
     ret = np.cumsum(a, dtype=float)
     ret[n:] = ret[n:] - ret[:-n]
-    return ret[n - 1 :] / n
+    return ret[n - 1:] / n
 
 
 def moving_average_smoothing(x, y, n):
@@ -51,18 +51,25 @@ def indicator(t, y1, y2):
     return moving_average_smoothing(t, one_sided_diff, n=window_size)
 
 
-def process_interval(df: pd.DataFrame):
+def process_interval(df: pd.DataFrame, interval_idx: int = 0):
     t, (_, H_P) = filtering.to_uniform_grid(df.loc[:, ["datetime", "H", "H_P"]])
 
     # for fitting
     _, (H, P) = filtering.to_uniform_grid(df.loc[:, ["datetime", "H", "P_hpa1"]])
 
+    H_P_flt = filtering.filter_array(t, H_P)
+    H_flt = filtering.filter_array(t, H)
+
+    if PLOTTING_CONF["H_histogram"]:
+        plt.clf()
+        plt.hist(H_flt, bins=70, range=[-20, 20])
+        sigma = np.std(H_flt)
+        plt.title(rf"$\sigma = {sigma}$")
+        plt.savefig(f"pics/H-hist-{interval_idx}")
+
     n_fittings = 5
     for i in range(n_fittings):
         print(".", end="")
-
-        H_P_flt = filtering.filter_array(t, H_P)
-        H_flt = filtering.filter_array(t, H)
 
         t_ind, ind = indicator(t, H_flt, H_P_flt)
         indicator_mask = np.greater(ind, INDICATOR_THRESHOLD)
@@ -77,7 +84,7 @@ def process_interval(df: pd.DataFrame):
         ):
             if start > last_end:
                 last_end, corrected_H = barometric_height_correction(
-                    t, H, P, indicator_mask, start, end
+                    t, H, P, indicator_mask, start, end, interval_idx
                 )
                 H[start:end] = corrected_H
 
@@ -119,7 +126,7 @@ def find_adjasent_interval(direction, window, mask, istart):
     return window_limits(i)
 
 
-def barometric_height_correction(t, H, P, mask, imin, imax):
+def barometric_height_correction(t, H, P, mask, imin, imax, interval_idx: int):
     window_size = int(CORRECTION_CONF["fitting_window"] / (t[1] - t[0]))
     left = find_adjasent_interval(-1, window_size, mask, imin)
     right = find_adjasent_interval(1, window_size, mask, imax - 1)
@@ -148,22 +155,21 @@ def barometric_height_correction(t, H, P, mask, imin, imax):
     H_points = np.array((*H_left, *H_right))
     weights = np.array((*weights_left, *weights_right))
 
-    PLOTTING = True
-
-    if PLOTTING:
+    if PLOTTING_CONF["barometric_height_correction"]:
+        plt.clf()
         plt.plot(P_points, H_points, "b.")
         plt.plot(P[imin:imax], H[imin:imax], "rx")
 
     try:
         P0, a = barometric_fit(P_points, H_points, weights)
-        if PLOTTING:
+        if PLOTTING_CONF["barometric_height_correction"]:
             smooth_x = np.linspace(np.min(P_points), np.max(P_points), 1000)
             plt.plot(smooth_x, barometric_func(smooth_x, P0, a), "-r")
         H_corrected = barometric_func(P[imin:imax], P0, a)
     except Exception:
         H_corrected = H[imin:imax]
 
-    if PLOTTING:
-        plt.show()
+    if PLOTTING_CONF["barometric_height_correction"]:
+        plt.savefig(f"pics/pic-barometric-corr-{interval_idx}")
 
     return right[1], H_corrected
